@@ -1,0 +1,189 @@
+---
+title: "Jogos de Xadrez"
+output: html_notebook
+---
+
+## O dataset
+Dados sobre mais de 20,000 jogos de xadrez jogados no Lichess, com movimentos, quem ganhou, o rating, abertura e outros.  
+```{r warning=FALSE}
+library(tidyverse)
+chess_data <- read.csv('chess_games1.csv')
+chess_data
+```
+Carregando o dataset.
+
+## "Limpeza" de Dados
+
+```{r}
+a <- select(chess_data, victory_status, turns, winner, white_rating, black_rating) %>% 
+  mutate(diferenca_rating = white_rating - black_rating) %>% 
+  mutate(mod_diferenca_rating = abs(white_rating - black_rating)) %>%
+  mutate(dif_result_rating = ifelse((winner=="White") & (diferenca_rating > 0),"maior_branco_ganhou",
+                             ifelse((winner=="Black") & (diferenca_rating < 0),"maior_preto_ganhou",
+                             ifelse((winner=="Black") & (diferenca_rating > 0),"menor_preto_ganhou",
+                             ifelse((winner=="White") & (diferenca_rating < 0),"menor_branco_ganhou",
+                             ifelse((winner=="Draw"), "empate",
+                             ifelse((diferenca_rating == 0), "igualado","N/A"))))))) %>% 
+  mutate(result_maior = ifelse((winner=="White") & (diferenca_rating > 0),"maior_ganhou",
+                        ifelse((winner=="Black") & (diferenca_rating < 0),"maior_ganhou",
+                        ifelse((winner=="Black") & (diferenca_rating > 0),"maior_perdeu",
+                        ifelse((winner=="White") & (diferenca_rating < 0),"maior_perdeu",
+                        ifelse((winner=="Draw"), "empate",
+                        ifelse((diferenca_rating == 0), "igualado","N/A"))))))) %>% 
+  mutate(result_dif = ifelse(((result_maior=="maior_ganhou")|(result_maior =="igualado")) & (mod_diferenca_rating < 100),"100",
+                      ifelse((result_maior=="maior_ganhou") & (mod_diferenca_rating < 200),"200",
+                      ifelse((result_maior=="maior_ganhou") & (mod_diferenca_rating < 300),"300",
+                      ifelse((result_maior=="maior_ganhou") & (mod_diferenca_rating < 400),"400",
+                      ifelse((result_maior=="maior_ganhou") & (mod_diferenca_rating < 500),"500",
+                      ifelse((result_maior=="maior_ganhou") & (mod_diferenca_rating > 500),">500",
+                      ifelse(((result_maior=="maior_perdeu")|(result_maior=="empate")|(result_maior=="igualado"))& (mod_diferenca_rating < 100),"-100",
+                      ifelse(((result_maior=="maior_perdeu")|(result_maior=="empate"))& (mod_diferenca_rating < 200),"-200",
+                      ifelse(((result_maior=="maior_perdeu")|(result_maior=="empate"))& (mod_diferenca_rating < 300),"-300",
+                      ifelse(((result_maior=="maior_perdeu")|(result_maior=="empate"))& (mod_diferenca_rating < 400),"-400",
+                      ifelse(((result_maior=="maior_perdeu")|(result_maior=="empate"))& (mod_diferenca_rating < 500),"-500",
+                      ifelse(((result_maior=="maior_perdeu")|(result_maior=="empate"))& (mod_diferenca_rating > 500),"<-500",0))))))))))))) %>% 
+  mutate(part_dif = ifelse((mod_diferenca_rating < 100),"dif_100",
+                    ifelse((mod_diferenca_rating < 200),"dif_200",
+                    ifelse((mod_diferenca_rating < 300),"dif_300",
+                    ifelse((mod_diferenca_rating < 400),"dif_400",
+                    ifelse((mod_diferenca_rating < 500),"dif_500",
+                    ifelse((mod_diferenca_rating > 500),"dif_500+",
+                    ifelse((mod_diferenca_rating == 0), "igualado","N/A")))))))) %>% 
+ mutate(result_dif = factor(result_dif, levels=c("<-500", "-500", "-400", "-300", "-200", "-100", 
+                                                 "100", "200", "300", "400", "500", ">500")))
+a
+```
+Aqui eu criei  
+- Uma coluna com a diferença absoluta e normal de rating entre os jogadores.  
+- Uma coluna que categoriza as partidas de acordo com quem ganhou e se esse que ganhou tinha maior rating.  
+- Uma coluna que categoriza as partidas de acordo com a pessoa de maior rating, qual era essa diferença e se ele perdeu.  
+- Uma coluna que diz se a com quanto de diferença de rating a pessoa de maior rating ganhou ou perdeu.
+- A ultima coluna é para categorizar jogos pela diferença absoluta de rating.
+
+## Tentativas
+
+```{r}
+ggplot(a, aes(x = turns, y = mod_diferenca_rating)) +
+  geom_point()
+```
+Uma tentativa de observar se quanto maior a diferença de rating, menor seria o número de turnos.
+
+```{r}
+ggplot(a, aes(winner))+
+  geom_bar(position = "dodge", mapping = aes(y = ..prop..*100,
+                                             group = 1)) +
+  labs(x = "Vencedor", y = "Porcentagem") +
+  theme(legend.position = "top")
+```
+  Quem ganhou mais?  
+  
+```{r}
+ggplot(a, aes(dif_result_rating))+
+  geom_bar(position = "dodge", mapping = aes(y = ..prop..*100,
+                                             group = 1)) +
+  labs(x = "Resultado", y = "Porcentagem") +
+  theme(legend.position = "top")
+```
+O resultado pelo jogador de maior rating, os de maior rating tem mais chance de ganhar com as Brancas.
+
+
+```{r}
+ggplot(a, aes(dif_result_rating, mod_diferenca_rating, fill=dif_result_rating)) +
+  geom_boxplot(position = "dodge", mapping = aes(y = mod_diferenca_rating)) +
+  labs(x = "Resultado", y = "Diferença de Rating") +
+  theme(legend.position = "top")
+```
+
+```{r}
+ggplot(a, aes(winner, mod_diferenca_rating, fill=winner))+
+  geom_boxplot(position = "dodge", mapping = aes(y = mod_diferenca_rating)) +
+  labs(x = "Resultado", y = "Diferença de Rating") +
+  theme(legend.position = "bottom")
+```
+Uma vizualização meio ruim, não destaca a diferença entre pretas e brancas.
+
+## O gráfico
+
+A ideia é que a chance do jogador pelo rating faz uma curva em "s".
+
+```{r}
+lista=c("<-500", "-500", "-400", "-300", "-200", "-100", 
+"100", "200", "300", "400", "500", ">500")
+b<- subset(a,result_dif %in% lista)
+ggplot(b, aes(result_dif)) +
+  geom_bar(position = "dodge", mapping = aes(y = ..prop..*100,
+                                             group = part_dif)) +
+  labs(x = "Vantagem", y = "Chance de Ganhar", title = "Chance do Jogador Ganhar no Xadrez") + 
+  theme_set(theme_bw()) +
+  theme(legend.position = "top")
+```
+
+Eu calculei a "chance" dividindo os jogos ganhou com uma diferença pelo total de jogos com essa mesma diferença de rating.
+
+Ainda falta adicionar a diferença entre pretas e brancas.
+
+```{r}
+d <- mutate(a, cor_result_dif = ifelse((dif_result_rating=="maior_branco_ganhou") & (part_dif=="dif_100"),"b100",
+                      ifelse((dif_result_rating=="maior_branco_ganhou") & (part_dif=="dif_200"),"b200",
+                      ifelse((dif_result_rating=="maior_branco_ganhou") & (part_dif=="dif_300"),"b300",
+                      ifelse((dif_result_rating=="maior_branco_ganhou") & (part_dif=="dif_400"),"b400",
+                      ifelse((dif_result_rating=="maior_branco_ganhou") & (part_dif=="dif_500"),"b500",
+                      ifelse((dif_result_rating=="maior_branco_ganhou") & (part_dif=="dif_500+"),"b>500",
+                      ifelse(((dif_result_rating=="menor_branco_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_100"),"b-100",
+                      ifelse(((dif_result_rating=="menor_branco_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_200"),"b-200",
+                      ifelse(((dif_result_rating=="menor_branco_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_300"),"b-300",
+                      ifelse(((dif_result_rating=="menor_branco_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_400"),"b-400",
+                      ifelse(((dif_result_rating=="menor_branco_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_500"),"b-500",
+                      ifelse(((dif_result_rating=="menor_branco_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_500+"),"b<-500",
+                      ifelse((dif_result_rating=="maior_preto_ganhou")& (part_dif=="dif_100"),"p100",
+                      ifelse((dif_result_rating=="maior_preto_ganhou")& (part_dif=="dif_200"),"p200",
+                      ifelse((dif_result_rating=="maior_preto_ganhou")& (part_dif=="dif_300"),"p300",
+                      ifelse((dif_result_rating=="maior_preto_ganhou")& (part_dif=="dif_400"),"p400",
+                      ifelse((dif_result_rating=="maior_preto_ganhou")& (part_dif=="dif_500"),"p500",
+                      ifelse((dif_result_rating=="maior_preto_ganhou")& (part_dif=="dif_500+"),"p>500",
+                      ifelse(((dif_result_rating=="menor_preto_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_100"),"p-100",
+                      ifelse(((dif_result_rating=="menor_preto_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_200"),"p-200",
+                      ifelse(((dif_result_rating=="menor_preto_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_300"),"p-300",
+                      ifelse(((dif_result_rating=="menor_preto_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_400"),"p-400",
+                      ifelse(((dif_result_rating=="menor_preto_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_500"),"p-500",
+                      ifelse(((dif_result_rating=="menor_preto_ganhou")|(dif_result_rating=="empate"))& (part_dif=="dif_500+"),"p<-500",0 ))))))))))))))))))))))))) %>%
+     mutate(cor_result_dif = factor(cor_result_dif, levels=c("b<-500","p<-500", "b-500","p-500", "b-400","p-400", "b-300","p-300", "b-200","p-200", "b-100","p-100","b100","p100", "b200","p200", "b300","p300", "b400","p400", "b500","p500", "b>500","p>500"))) %>% 
+     mutate(relacao = ifelse(((cor_result_dif=="b100")|(cor_result_dif=="p-100")),"b>p100",
+                      ifelse(((cor_result_dif=="b200")|(cor_result_dif=="p-200")),"b>p200",
+                      ifelse(((cor_result_dif=="b300")|(cor_result_dif=="p-300")),"b>p300",
+                      ifelse(((cor_result_dif=="b400")|(cor_result_dif=="p-400")),"b>p400",
+                      ifelse(((cor_result_dif=="b500")|(cor_result_dif=="p-500")),"b>p500",
+                      ifelse(((cor_result_dif=="b>500")|(cor_result_dif=="p<-500")),"b>p500+",
+                      ifelse(((cor_result_dif=="p100")|(cor_result_dif=="b-100")),"p>b100",
+                      ifelse(((cor_result_dif=="p200")|(cor_result_dif=="b-200")),"p>b200",
+                      ifelse(((cor_result_dif=="p300")|(cor_result_dif=="b-300")),"p>b300",
+                      ifelse(((cor_result_dif=="p400")|(cor_result_dif=="b-400")),"p>b400",
+                      ifelse(((cor_result_dif=="p500")|(cor_result_dif=="b-500")),"p>b500",
+                      ifelse(((cor_result_dif=="p>500")|(cor_result_dif=="b<-500")),"p>b500+",0)))))))))))))
+d
+```
+A ideia da Primeira coluna é dizer que ganhou e por qual vantagem ganhou, os empates são contados como vitoria do jogador de menor rating.  
+A segunda coluna cria uma relação baseada nos jogos, por exemplo um jogo em que as pretas ganharam com 100 a mais de rating é contado na mesma
+categoria que um jogo em que as brancas perderam com 100 a menos de rating, era necessário para fazer a proporção no gráfico abaixo.  
+
+```{r}
+list=c("b<-500","p<-500", "b-500","p-500", "b-400","p-400", "b-300","p-300", "b-200","p-200", "b-100","p-100","b100","p100", "b200","p200", "b300","p300", "b400","p400", "b500","p500", "b>500","p>500")
+e<- subset(d,cor_result_dif %in% list)
+ggplot(e, aes(cor_result_dif)) +
+  geom_bar(position = "dodge", mapping = aes(y = ..prop..*100,
+                                             group = relacao)) +
+  labs(x = "Vantagem", y = "Chance de Ganhar", title = "Chance do Jogador Ganhar no Xadrez") + 
+  theme_set(theme_bw()) +
+  theme(axis.text.x=element_text(angle=305,vjust=0.5,hjust=1)) +
+  theme(legend.position = "top")
+```
+
+As colunas da esquerda são as brancas e as da direita são as pretas, esse gráfico mostra uma diferença bem significante na chance de ganhar das brancas e pretas.
+```{r}
+list=c("b<-500","p<-500", "b-500","p-500", "b-400","p-400", "b-300","p-300", "b-200","p-200", "b-100","p-100","b100","p100", "b200","p200", "b300","p300", "b400","p400", "b500","p500", "b>500","p>500")
+e<- subset(d,cor_result_dif %in% list)
+ggplot(e, aes(x = cor_result_dif,y = stat(prop*100), group=relacao)) +
+  geom_bar() + scale_x_discrete(labels = NULL) + labs(x = "", y = "")
+ 
+```
+
